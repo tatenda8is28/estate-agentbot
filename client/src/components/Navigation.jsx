@@ -5,8 +5,8 @@ import { LayoutDashboard, Users, Home, Settings, Zap, Calendar } from 'lucide-re
 export default function Navigation() {
   const location = useLocation();
   const menu = [
-    { name: 'Leads', path: '/', icon: Users },
     { name: 'Board', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Leads', path: '/', icon: Users },
     { name: 'Homes', path: '/listings', icon: Home },
     { name: 'Calendar', path: '/calendar', icon: Calendar },
     { name: 'Settings', path: '/settings', icon: Settings },
