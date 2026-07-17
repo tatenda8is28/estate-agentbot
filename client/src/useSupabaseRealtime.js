@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../supabase';
+import { supabase } from './supabase';
 
 export function useSupabaseRealtime(table, filter = null) {
   const [data, setData] = useState([]);
