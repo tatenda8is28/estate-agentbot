@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Phone, MapPin, DollarSign, TrendingUp, Edit2, Check, X } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../supabase';
 
 export default function ProspectDetails({ prospect, onUpdate }) {
   const [isEditing, setIsEditing] = useState(false);
