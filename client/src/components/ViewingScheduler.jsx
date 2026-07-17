@@ -71,9 +71,9 @@ export default function ViewingScheduler({ property, onClose }) {
     setError(null);
 
     // Build YYYY-MM-DD using UTC to avoid timezone-offset day-shift
-    const viewing_date = new Date(Date.UTC(viewYear, viewMonth, selectedDate.getDate()))
-      .toISOString()
-      .split('T')[0];
+    const viewing_date = new Date(
+      Date.UTC(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate())
+    ).toISOString().split('T')[0];
 
     const { error: insertError } = await supabase.from('property_viewings').insert([{
       property_id:  property.id,
