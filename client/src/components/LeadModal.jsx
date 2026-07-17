@@ -18,23 +18,34 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
 
   const fetchMessages = async () => {
     try {
+      console.log('Fetching messages for prospect:', lead.id);
+      
       const { data, error } = await supabase
         .from('re_interaction_logs')
         .select('*')
-        .eq('prospect_id', lead.id)
-        .single();
+        .eq('prospect_id', lead.id);
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching messages:', error);
+      console.log('Query result:', { data, error });
+
+      if (error) {
+        console.error('Supabase error:', error);
         return;
       }
 
-      if (data && data.conversation) {
-        const conversation = JSON.parse(data.conversation);
-        setMessages(conversation);
+      if (data && data.length > 0) {
+        console.log('Found interaction log:', data[0]);
+        try {
+          const conversation = JSON.parse(data[0].conversation || '[]');
+          console.log('Parsed conversation:', conversation);
+          setMessages(conversation);
+        } catch (parseErr) {
+          console.error('Error parsing conversation:', parseErr);
+        }
+      } else {
+        console.log('No interaction logs found for this prospect');
       }
     } catch (err) {
-      console.error('Error parsing messages:', err);
+      console.error('Error fetching messages:', err);
     }
   };
 
@@ -75,7 +86,10 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
           onConflict: 'prospect_id'
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error saving message:', error);
+        throw error;
+      }
 
       // Simulate AI response
       setTimeout(() => {
@@ -203,7 +217,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
                 <div className="flex items-center justify-center h-full text-center">
                   <div>
                     <MessageCircle size={32} className="mx-auto text-gray-300 mb-2" />
-                    <p className="text-gray-500 text-sm">No messages yet</p>
+                    <p className="text-gray-500 text-sm">No messages yet. Start the conversation!</p>
                   </div>
                 </div>
               ) : (
