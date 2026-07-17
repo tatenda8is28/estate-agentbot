@@ -4,6 +4,7 @@ import Navigation from './components/Navigation';
 import CRM from './pages/CRM';
 import Listings from './pages/Listings';
 import Calendar from './pages/Calendar';
+import Dashboard from './pages/Dashboard';
 
 export default function App() {
   return (
@@ -13,7 +14,7 @@ export default function App() {
         <div className="flex-1 flex overflow-hidden">
           <Routes>
             <Route path="/" element={<CRM />} />
-            <Route path="/dashboard" element={<div className="p-10 font-black opacity-20 uppercase tracking-widest">Performance Analytics</div>} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/listings" element={<Listings />} />
             <Route path="/calendar" element={<Calendar />} />
             <Route path="/settings" element={<div className="p-10 font-black opacity-20 uppercase tracking-widest">Bot Configuration</div>} />
