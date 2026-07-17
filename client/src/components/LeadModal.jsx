@@ -7,10 +7,12 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState(lead?.lead_stage || 'Discovery');
+  const [otherLeads, setOtherLeads] = useState([]);
 
   useEffect(() => {
     if (lead) {
       fetchMessages();
+      fetchOtherLeads();
     }
   }, [lead]);
 
@@ -20,15 +22,35 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
         .from('re_interaction_logs')
         .select('*')
         .eq('prospect_id', lead.id)
-        .order('last_updated_at', { ascending: false });
+        .single();
 
-      if (error) throw error;
-      if (data && data.length > 0) {
-        const conversation = JSON.parse(data[0].conversation || '[]');
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching messages:', error);
+        return;
+      }
+
+      if (data && data.conversation) {
+        const conversation = JSON.parse(data.conversation);
         setMessages(conversation);
       }
     } catch (err) {
-      console.error('Error fetching messages:', err);
+      console.error('Error parsing messages:', err);
+    }
+  };
+
+  const fetchOtherLeads = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('re_prospect_leads')
+        .select('id, prospect_name, wa_number, lead_score')
+        .eq('lead_stage', stage)
+        .neq('id', lead.id)
+        .limit(5);
+
+      if (error) throw error;
+      setOtherLeads(data || []);
+    } catch (err) {
+      console.error('Error fetching other leads:', err);
     }
   };
 
@@ -37,13 +59,25 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
 
     try {
       setLoading(true);
-      // Add user message to UI immediately
       const userMsg = { t: new Date().toISOString(), role: 'user', content: newMessage };
-      setMessages([...messages, userMsg]);
+      const updatedMessages = [...messages, userMsg];
+      setMessages(updatedMessages);
       setNewMessage('');
 
-      // TODO: Send to AI/API for response
-      // For now, just simulate a response
+      // Save to database
+      const { error } = await supabase
+        .from('re_interaction_logs')
+        .upsert({
+          prospect_id: lead.id,
+          conversation: JSON.stringify(updatedMessages),
+          last_updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'prospect_id'
+        });
+
+      if (error) throw error;
+
+      // Simulate AI response
       setTimeout(() => {
         const assistantMsg = {
           t: new Date().toISOString(),
@@ -69,6 +103,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
 
       if (error) throw error;
       onUpdate({ ...lead, lead_stage: newStage });
+      fetchOtherLeads();
     } catch (err) {
       console.error('Error updating stage:', err);
     }
@@ -139,12 +174,24 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
               </div>
             </div>
 
-            {/* Other Leads in Discovery */}
+            {/* Other Leads in Stage */}
             <div className="bg-gray-50 rounded-lg p-4 flex-1 overflow-y-auto">
-              <h3 className="font-semibold text-gray-900 mb-2 text-sm">Other {stage} Leads</h3>
-              <div className="space-y-2 text-sm">
-                <p className="text-gray-600 text-xs">Shows other leads in {stage} stage</p>
-              </div>
+              <h3 className="font-semibold text-gray-900 mb-3 text-sm">Other {stage} Leads</h3>
+              {otherLeads.length === 0 ? (
+                <p className="text-gray-600 text-xs">No other leads in {stage}</p>
+              ) : (
+                <div className="space-y-2">
+                  {otherLeads.map(l => (
+                    <div key={l.id} className="p-2 bg-white rounded border border-gray-200 text-xs">
+                      <p className="font-medium text-gray-900 truncate">{l.prospect_name || 'Unnamed'}</p>
+                      <p className="text-gray-600 text-xs truncate">{l.wa_number}</p>
+                      <span className="inline-block mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                        {l.lead_score}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
