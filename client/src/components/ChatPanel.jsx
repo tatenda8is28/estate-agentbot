@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Send, Pause, Play, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../supabase';
 
 export default function ChatPanel({ prospect }) {
   const [messages, setMessages] = useState([]);
