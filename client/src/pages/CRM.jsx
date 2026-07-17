@@ -39,48 +39,51 @@ export default function CRM() {
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 sticky top-0 z-40 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Real Estate CRM</h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-lg md:text-2xl font-bold text-gray-900 whitespace-nowrap">Real Estate CRM</h1>
           
-          <div className="flex items-center justify-between gap-4 md:gap-6">
+          <div className="flex items-center gap-3 md:gap-6 ml-auto">
+            {/* Stats - shown first on right */}
+            <div className="flex gap-2 md:gap-4 text-xs md:text-sm">
+              <div className="text-right">
+                <p className="text-gray-500 text-xs">Total</p>
+                <p className="font-bold text-gray-900">{prospects.length}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-500 text-xs">Hot</p>
+                <p className={`font-bold ${hotLeadsCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                  {hotLeadsCount}
+                </p>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="hidden md:block w-px h-8 bg-gray-200"></div>
+
             {/* View Toggle */}
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
               <button
                 onClick={() => setViewMode('pipeline')}
-                className={`flex items-center gap-1 px-2 md:px-4 py-1.5 rounded text-xs md:text-sm font-medium transition ${
+                className={`flex items-center gap-1 px-2 md:px-3 py-1.5 rounded text-xs font-medium transition ${
                   viewMode === 'pipeline'
                     ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                <LayoutGrid size={16} />
-                <span className="hidden sm:inline">Pipeline</span>
+                <LayoutGrid size={14} />
+                <span className="hidden sm:inline text-xs">Pipeline</span>
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1 px-2 md:px-4 py-1.5 rounded text-xs md:text-sm font-medium transition ${
+                className={`flex items-center gap-1 px-2 md:px-3 py-1.5 rounded text-xs font-medium transition ${
                   viewMode === 'list'
                     ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                <List size={16} />
-                <span className="hidden sm:inline">List</span>
+                <List size={14} />
+                <span className="hidden sm:inline text-xs">List</span>
               </button>
-            </div>
-
-            {/* Stats */}
-            <div className="flex gap-3 md:gap-6 text-sm">
-              <div className="text-right">
-                <p className="text-gray-500 text-xs">Total</p>
-                <p className="text-lg md:text-xl font-bold text-gray-900">{prospects.length}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-gray-500 text-xs">Hot</p>
-                <p className={`text-lg md:text-xl font-bold ${hotLeadsCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                  {hotLeadsCount}
-                </p>
-              </div>
             </div>
           </div>
         </div>
@@ -135,7 +138,7 @@ export default function CRM() {
               <h2 className="text-base font-bold text-gray-900 truncate">
                 {selectedProspect.prospect_name || 'Prospect'}
               </h2>
-              <button onClick={handleCloseDetail} className="p-1 hover:bg-gray-100 rounded-lg">
+              <button onClick={handleCloseDetail} className="p-1 hover:bg-gray-100 rounded-lg flex-shrink-0">
                 <X size={20} className="text-gray-600" />
               </button>
             </div>
