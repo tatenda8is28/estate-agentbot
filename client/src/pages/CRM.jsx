@@ -40,9 +40,9 @@ export default function CRM() {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 sticky top-0 z-40 shadow-sm">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-lg md:text-2xl font-bold text-gray-900">Real Estate CRM</h1>
+          <h1 className="text-lg md:text-2xl font-bold text-gray-900 flex-shrink-0">Real Estate CRM</h1>
           
-          <div className="flex items-center gap-3 md:gap-4 flex-wrap justify-end">
+          <div className="flex items-center gap-4 md:gap-6 flex-shrink-0">
             {/* View Toggle */}
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
               <button
@@ -69,18 +69,15 @@ export default function CRM() {
               </button>
             </div>
 
-            {/* Divider */}
-            <div className="hidden md:block w-px h-6 bg-gray-300"></div>
-
             {/* Stats */}
-            <div className="flex gap-2 md:gap-4 text-xs md:text-sm">
+            <div className="flex gap-3 md:gap-4 text-xs">
               <div className="text-right">
                 <p className="text-gray-500 text-xs">Total</p>
-                <p className="font-bold text-gray-900">{prospects.length}</p>
+                <p className="font-bold text-gray-900 text-sm">{prospects.length}</p>
               </div>
               <div className="text-right">
                 <p className="text-gray-500 text-xs">Hot</p>
-                <p className={`font-bold ${hotLeadsCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                <p className={`font-bold text-sm ${hotLeadsCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
                   {hotLeadsCount}
                 </p>
               </div>
