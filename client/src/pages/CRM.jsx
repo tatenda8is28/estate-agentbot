@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutGrid, List, X, ChevronLeft } from 'lucide-react';
+import { LayoutGrid, List, X } from 'lucide-react';
 import PipelineView from '../components/PipelineView';
 import ProspectList from '../components/ProspectList';
 import ChatPanel from '../components/ChatPanel';
@@ -39,7 +39,7 @@ export default function CRM() {
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Sticky Header */}
       <header className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="max-w-full mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           {/* Title */}
           <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Real Estate CRM</h1>
           
@@ -73,14 +73,14 @@ export default function CRM() {
             </div>
 
             {/* Quick Stats */}
-            <div className="hidden sm:flex gap-4 text-sm border-l border-gray-200 pl-6">
+            <div className="hidden sm:flex gap-6 text-sm border-l border-gray-200 pl-6">
               <div>
-                <p className="text-gray-500 text-xs font-medium">Total</p>
-                <p className="text-xl font-bold text-gray-900">{prospects.length}</p>
+                <p className="text-gray-500 text-xs font-medium">Total Leads</p>
+                <p className="text-2xl font-bold text-gray-900">{prospects.length}</p>
               </div>
               <div>
-                <p className="text-gray-500 text-xs font-medium">Hot</p>
-                <p className={`text-xl font-bold ${hotLeadsCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                <p className="text-gray-500 text-xs font-medium">Hot Leads</p>
+                <p className={`text-2xl font-bold ${hotLeadsCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
                   {hotLeadsCount}
                 </p>
               </div>
@@ -89,11 +89,11 @@ export default function CRM() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden flex gap-4 p-4 max-w-7xl mx-auto w-full">
+      {/* Main Content - Optimized for large screens */}
+      <div className="flex-1 overflow-hidden flex gap-6 p-4 lg:p-6">
         
-        {/* Primary View */}
-        <div className="flex-1 overflow-y-auto min-w-0 rounded-lg bg-white shadow-sm">
+        {/* Primary View - Takes more space on large screens */}
+        <div className="flex-1 overflow-y-auto min-w-0 rounded-lg bg-white shadow-md border border-gray-200 lg:flex-[1.5]">
           {viewMode === 'pipeline' ? (
             <PipelineView 
               prospects={prospects}
@@ -108,11 +108,11 @@ export default function CRM() {
           )}
         </div>
 
-        {/* Desktop Sidebar - Hidden on mobile/tablet */}
+        {/* Desktop Sidebar - Always visible on large screens */}
         {selectedProspect && (
-          <div className="hidden lg:flex flex-col gap-4 w-96 min-h-0">
+          <div className="hidden lg:flex flex-col gap-6 w-80 2xl:w-96 min-h-0 flex-shrink-0">
             {/* Details Card */}
-            <div className="flex-1 overflow-y-auto min-h-0 rounded-lg bg-white shadow-sm">
+            <div className="flex-1 overflow-y-auto min-h-0 rounded-lg bg-white shadow-md border border-gray-200 p-6">
               <ProspectDetails
                 prospect={selectedProspect}
                 onUpdate={(updated) => setSelectedProspect(updated)}
@@ -120,8 +120,33 @@ export default function CRM() {
             </div>
 
             {/* Chat Card */}
-            <div className="h-80 rounded-lg bg-white shadow-sm overflow-hidden flex flex-col">
+            <div className="h-96 rounded-lg bg-white shadow-md border border-gray-200 overflow-hidden flex flex-col">
               <ChatPanel prospect={selectedProspect} />
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={handleCloseDetail}
+              className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition"
+            >
+              Close Details
+            </button>
+          </div>
+        )}
+
+        {/* Empty State on Desktop */}
+        {!selectedProspect && (
+          <div className="hidden lg:flex flex-col gap-6 w-80 2xl:w-96 flex-shrink-0">
+            <div className="flex-1 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-dashed border-blue-200 flex items-center justify-center">
+              <div className="text-center p-6">
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">Select a Prospect</h3>
+                <p className="text-sm text-gray-600">Click on a prospect card to view details and chat</p>
+              </div>
             </div>
           </div>
         )}
