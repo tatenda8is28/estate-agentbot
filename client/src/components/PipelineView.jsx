@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { GripHorizontal, Users } from 'lucide-react';
 
-export default function PipelineView({ prospects }) {
+export default function PipelineView({ prospects, onSelectProspect }) {
   const stages = ['Discovery', 'Interested', 'Negotiating', 'Closed'];
 
   const scoreColors = {
@@ -32,7 +32,7 @@ export default function PipelineView({ prospects }) {
   return (
     <div className="flex flex-col h-full">
       {/* Pipeline Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 p-4">
         {getStageCounts().map(({ stage, count }) => (
           <div key={stage} className="bg-white rounded-lg p-4 border border-gray-200">
             <p className="text-sm text-gray-600">{stage}</p>
@@ -42,7 +42,7 @@ export default function PipelineView({ prospects }) {
       </div>
 
       {/* Kanban Board */}
-      <div className="flex gap-4 overflow-x-auto pb-4 flex-1">
+      <div className="flex gap-4 overflow-x-auto pb-4 px-4 flex-1">
         {stages.map(stage => (
           <div
             key={stage}
@@ -66,7 +66,8 @@ export default function PipelineView({ prospects }) {
                 getProspectsForStage(stage).map(prospect => (
                   <div
                     key={prospect.id}
-                    className="bg-white p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-md transition cursor-grab active:cursor-grabbing"
+                    onClick={() => onSelectProspect(prospect)}
+                    className="bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow-md hover:scale-105 transition cursor-pointer"
                   >
                     <div className="flex gap-2">
                       <GripHorizontal size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
