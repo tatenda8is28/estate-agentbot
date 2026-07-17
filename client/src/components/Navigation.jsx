@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, Home, Settings, Zap } from 'lucide-react';
+import { LayoutDashboard, Users, Home, Settings, Zap, Calendar } from 'lucide-react';
 
 export default function Navigation() {
   const location = useLocation();
@@ -8,6 +8,7 @@ export default function Navigation() {
     { name: 'Leads', path: '/', icon: Users },
     { name: 'Board', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Homes', path: '/listings', icon: Home },
+    { name: 'Calendar', path: '/calendar', icon: Calendar },
     { name: 'Settings', path: '/settings', icon: Settings },
   ];
 
