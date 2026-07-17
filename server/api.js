@@ -16,6 +16,18 @@ const supabase = createClient(
 app.use(cors());
 app.use(express.json());
 
+// Safely parse a price string like "R 1,250,000" or "1250000.50" into a number.
+function parsePriceValue(raw) {
+  const cleaned = String(raw).replace(/[^0-9.]/g, '');
+  // Remove all but the last decimal point to avoid malformed floats
+  const parts = cleaned.split('.');
+  const normalized = parts.length > 1
+    ? parts.slice(0, -1).join('') + '.' + parts[parts.length - 1]
+    : cleaned;
+  const n = parseFloat(normalized);
+  return isNaN(n) ? null : n;
+}
+
 // POST /api/properties/upload
 // Accepts a multipart/form-data request with a "file" field containing a CSV file.
 // Columns expected: property_id, address, price, bedrooms, bathrooms, property_type, description, image_url
@@ -45,7 +57,7 @@ app.post('/api/properties/upload', upload.single('file'), async (req, res) => {
     const properties = records.map((row) => ({
       property_id:   row.property_id   || null,
       address:       row.address        || '',
-      price:         row.price          ? parseFloat(String(row.price).replace(/[^0-9.]/g, '')) || null : null,
+      price:         row.price          ? parsePriceValue(row.price) : null,
       bedrooms:      row.bedrooms       ? parseInt(row.bedrooms, 10) || null : null,
       bathrooms:     row.bathrooms      ? parseInt(row.bathrooms, 10) || null : null,
       property_type: row.property_type  || '',

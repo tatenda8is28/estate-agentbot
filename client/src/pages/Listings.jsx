@@ -101,7 +101,8 @@ function UploadModal({ onClose, onSuccess }) {
       } else {
         setResult({ success: false, message: json.error });
       }
-    } catch {
+    } catch (err) {
+      console.error('CSV upload error:', err);
       setResult({ success: false, message: 'Upload failed. Make sure the API server is running on port 3001.' });
     } finally {
       setUploading(false);
