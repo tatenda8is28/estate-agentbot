@@ -38,16 +38,16 @@ export default function CRM() {
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 sticky top-0 z-40 shadow-sm">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-lg md:text-2xl font-bold text-gray-900 flex-shrink-0">Real Estate CRM</h1>
+      <header className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-40 shadow-sm">
+        <div className="flex items-center justify-between gap-4 min-h-10">
+          <h1 className="text-lg font-bold text-gray-900 whitespace-nowrap">Real Estate CRM</h1>
           
-          <div className="flex items-center gap-4 md:gap-6 flex-shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             {/* View Toggle */}
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg flex-shrink-0">
               <button
                 onClick={() => setViewMode('pipeline')}
-                className={`flex items-center gap-1 px-2 md:px-3 py-1.5 rounded text-xs font-medium transition ${
+                className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition ${
                   viewMode === 'pipeline'
                     ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
@@ -58,7 +58,7 @@ export default function CRM() {
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1 px-2 md:px-3 py-1.5 rounded text-xs font-medium transition ${
+                className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition ${
                   viewMode === 'list'
                     ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
@@ -70,14 +70,14 @@ export default function CRM() {
             </div>
 
             {/* Stats */}
-            <div className="flex gap-3 md:gap-4 text-xs">
+            <div className="flex gap-3 text-xs flex-shrink-0">
               <div className="text-right">
                 <p className="text-gray-500 text-xs">Total</p>
-                <p className="font-bold text-gray-900 text-sm">{prospects.length}</p>
+                <p className="font-bold text-gray-900">{prospects.length}</p>
               </div>
               <div className="text-right">
                 <p className="text-gray-500 text-xs">Hot</p>
-                <p className={`font-bold text-sm ${hotLeadsCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                <p className={`font-bold ${hotLeadsCount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
                   {hotLeadsCount}
                 </p>
               </div>
@@ -87,7 +87,7 @@ export default function CRM() {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden flex gap-3 md:gap-4 p-3 md:p-4">
+      <div className="flex-1 overflow-hidden flex gap-3 p-3">
         
         {/* Pipeline/List */}
         <div className="flex-1 overflow-y-auto rounded-lg bg-white shadow-sm border border-gray-200">
