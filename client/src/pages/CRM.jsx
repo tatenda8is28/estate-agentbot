@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { LayoutGrid, List } from 'lucide-react';
 import PipelineView from '../components/PipelineView';
 import ProspectList from '../components/ProspectList';
@@ -8,7 +8,7 @@ import { useSupabaseRealtime } from '../useSupabaseRealtime';
 export default function CRM() {
   const [selectedProspect, setSelectedProspect] = useState(null);
   const [viewMode, setViewMode] = useState('pipeline');
-  const { data: prospects, loading } = useSupabaseRealtime('re_prospect_leads');
+  const { data: prospects, loading, refetch } = useSupabaseRealtime('re_prospect_leads');
 
   const handleSelectProspect = (prospect) => {
     setSelectedProspect(prospect);
@@ -17,6 +17,13 @@ export default function CRM() {
   const handleCloseModal = () => {
     setSelectedProspect(null);
   };
+
+  const handleUpdateLead = useCallback((updatedLead) => {
+    // Update selected prospect
+    setSelectedProspect(updatedLead);
+    // Refetch all prospects to update pipeline
+    refetch();
+  }, [refetch]);
 
   const hotLeadsCount = prospects.filter(p => p.lead_score === 'Hot').length;
 
@@ -104,7 +111,7 @@ export default function CRM() {
         <LeadModal
           lead={selectedProspect}
           onClose={handleCloseModal}
-          onUpdate={(updated) => setSelectedProspect(updated)}
+          onUpdate={handleUpdateLead}
         />
       )}
     </div>
