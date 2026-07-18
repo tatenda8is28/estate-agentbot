@@ -99,65 +99,24 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
     try {
       setAiLoading(true);
 
-      // Build property context for AI
-      let propertyContext = '';
-      if (recommendedProperties.length > 0) {
-        propertyContext = `\n\nAvailable matching properties:\n${recommendedProperties
-          .slice(0, 3)
-          .map(
-            (p) =>
-              `- ${p.title} in ${p.location}: R${parseInt(p.price).toLocaleString()} (${p.bedrooms} bed, ${p.bathroom} bath)`
-          )
-          .join('\n')}`;
-      }
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('http://localhost:3001/api/ai-response', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an Elite Real Estate Assistant for a luxury property platform. You are knowledgeable, persuasive, and helpful.
-
-Lead Info:
-- Name: ${lead.prospect_name || 'Valued Client'}
-- Budget: ${lead.target_budget || 'Not specified'}
-- Preferred Area: ${lead.preferred_area || 'Open to suggestions'}
-- Looking for: ${lead.bedrooms ? `${lead.bedrooms} bedrooms` : 'Property'}
-
-${propertyContext}
-
-Your role:
-1. Be warm, professional, and engaging
-2. Address their specific needs
-3. Recommend properties from the available listings
-4. Ask qualifying questions to better understand their needs
-5. Keep responses concise (2-3 sentences max)
-6. Use emojis sparingly for personality
-7. Always be ready to facilitate viewings
-8. Be a master seller - highlight property features and area benefits`,
-            },
-            ...messages.map((m) => ({
-              role: m.role,
-              content: m.content,
-            })),
-            { role: 'user', content: userText },
-          ],
-          temperature: 0.7,
-          max_tokens: 200,
+          userMessage: userText,
+          conversationHistory: messages,
+          prospectId: lead.id,
         }),
       });
 
-      const data = await response.json();
-      const aiMessage = data.choices?.[0]?.message?.content || 'I appreciate your interest. How can I assist further?';
+      if (!response.ok) {
+        throw new Error('Failed to get AI response');
+      }
 
-      // Extract any property mentions and suggested viewings
-      return aiMessage;
+      const data = await response.json();
+      return data.reply || 'I appreciate your interest. How can I assist further?';
     } catch (err) {
       console.error('AI Error:', err);
       return 'I apologize for the technical difficulty. How else can I help you today?';
@@ -369,7 +328,9 @@ Your role:
                     <div>
                       <MessageCircle size={32} className="mx-auto text-gray-300 mb-2" />
                       <p className="text-gray-500 text-sm">Start conversation with the prospect</p>
-                      <p className="text-gray-400 text-xs mt-1">{aiEnabled ? 'AI-powered responses enabled' : 'Manual mode - responses only'}</p>
+                      <p className="text-gray-400 text-xs mt-1">
+                        {aiEnabled ? 'AI-powered responses enabled' : 'Manual mode - responses only'}
+                      </p>
                     </div>
                   </div>
                 ) : (
