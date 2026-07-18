@@ -139,7 +139,18 @@ client.on('message', async (msg) => {
 
         // 2. GET SINGLE-ROW CONVERSATION
         let { data: log } = await supabase.from('re_interaction_logs').select('conversation').eq('prospect_id', prospect.id).single();
-        let convo = log ? log.conversation : [];
+        
+        // Ensure convo is an array
+        let convo = [];
+        if (log && log.conversation) {
+            try {
+                const parsed = JSON.parse(log.conversation);
+                convo = Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                console.error('Error parsing conversation:', e);
+                convo = [];
+            }
+        }
 
         // 3. APPEND INBOUND & GET AI REPLY
         convo.push({ role: 'user', content: text, t: new Date().toISOString() });
@@ -149,7 +160,7 @@ client.on('message', async (msg) => {
         // 4. UPSERT CONVERSATION (Single Row)
         await supabase.from('re_interaction_logs').upsert({
             prospect_id: prospect.id,
-            conversation: convo,
+            conversation: JSON.stringify(convo),
             last_updated_at: new Date().toISOString()
         });
 
