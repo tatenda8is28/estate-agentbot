@@ -9,6 +9,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(true);
   const [stage, setStage] = useState(lead?.lead_stage || 'Discovery');
+  const [leadScore, setLeadScore] = useState(lead?.lead_score || 'Cool');
   const [showProperties, setShowProperties] = useState(false);
   const [recommendedProperties, setRecommendedProperties] = useState([]);
 
@@ -16,6 +17,8 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
     if (lead) {
       fetchMessages();
       fetchRecommendedProperties();
+      setLeadScore(lead.lead_score);
+      setStage(lead.lead_stage);
     }
   }, [lead]);
 
@@ -47,7 +50,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
 
   const fetchRecommendedProperties = async () => {
     try {
-      let query = supabase.from('re_properties').select('*').limit(8);
+      let query = supabase.from('re_properties').select('*');
 
       if (lead.preferred_area) {
         query = query.ilike('location', `%${lead.preferred_area}%`);
@@ -60,7 +63,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
         }
       }
 
-      const { data, error } = await query.order('price', { ascending: true });
+      const { data, error } = await query.order('price', { ascending: true }).limit(8);
 
       if (error) throw error;
       setRecommendedProperties(data || []);
@@ -70,9 +73,9 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
     }
   };
 
-  const getAIResponse = async (userText) => {
+  const callAIEndpoint = async (userText) => {
     try {
-      setAiLoading(true);
+      console.log('🤖 Calling AI endpoint with:', { userText, prospectId: lead.id, aiEnabled });
 
       const response = await fetch('http://localhost:3001/api/ai-response', {
         method: 'POST',
@@ -89,16 +92,15 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('API Error:', errorData);
-        throw new Error('Failed to get AI response');
+        throw new Error(errorData.error || 'Failed to get AI response');
       }
 
       const data = await response.json();
-      return data.reply || 'I appreciate your interest. How can I assist further?';
+      console.log('✅ AI Response:', data.reply?.substring(0, 80));
+      return data.reply || 'I appreciate your interest.';
     } catch (err) {
-      console.error('AI Error:', err);
-      return 'I apologize for the technical difficulty. How else can I help you today?';
-    } finally {
-      setAiLoading(false);
+      console.error('❌ AI Endpoint Error:', err);
+      return 'I apologize for the technical difficulty. How else can I help?';
     }
   };
 
@@ -121,11 +123,13 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
       let assistantContent = '';
 
       if (aiEnabled) {
-        // Get AI response
-        assistantContent = await getAIResponse(userInput);
+        console.log('📨 AI ENABLED - Calling API');
+        setAiLoading(true);
+        assistantContent = await callAIEndpoint(userInput);
+        setAiLoading(false);
       } else {
-        // Manual mode - just acknowledge
-        assistantContent = `[Manual Mode] Noted: "${userInput}" - Awaiting your manual response.`;
+        console.log('🚫 AI DISABLED - Manual mode');
+        assistantContent = `[Manual Mode] Noted: "${userInput}" - Awaiting manual response.`;
       }
 
       const assistantMsg = {
@@ -137,7 +141,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
       const finalMessages = [...updatedMessages, assistantMsg];
       setMessages(finalMessages);
 
-      // Save to database
+      // Save conversation
       const { error } = await supabase.from('re_interaction_logs').upsert({
         prospect_id: lead.id,
         conversation: JSON.stringify(finalMessages),
@@ -147,24 +151,37 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
       if (error) {
         console.error('Error saving message:', error);
       }
+
+      // Refresh lead data from database (in case AI updated it)
+      const { data: refreshedLead } = await supabase
+        .from('re_prospect_leads')
+        .select('*')
+        .eq('id', lead.id)
+        .single();
+
+      if (refreshedLead) {
+        console.log('🔄 Refreshed lead data:', { stage: refreshedLead.lead_stage, score: refreshedLead.lead_score });
+        setStage(refreshedLead.lead_stage);
+        setLeadScore(refreshedLead.lead_score);
+        onUpdate(refreshedLead);
+      }
     } catch (err) {
       console.error('Error sending message:', err);
     } finally {
       setLoading(false);
+      setAiLoading(false);
     }
   };
 
   const handleStageChange = async (newStage) => {
     try {
+      console.log('📍 Changing stage to:', newStage);
       setStage(newStage);
       const { error } = await supabase.from('re_prospect_leads').update({ lead_stage: newStage }).eq('id', lead.id);
 
       if (error) throw error;
-      
-      // Update parent component to trigger kanban refresh
+
       onUpdate({ ...lead, lead_stage: newStage });
-      
-      console.log(`✅ Lead moved to ${newStage}`);
     } catch (err) {
       console.error('Error updating stage:', err);
       alert('Failed to update lead stage');
@@ -172,7 +189,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
   };
 
   const addPropertyToMessage = (property) => {
-    const message = `I'm interested in viewing "${property.title}" in ${property.location} at ${property.address}. Can you help me schedule?`;
+    const message = `I'm interested in viewing "${property.title}" in ${property.location} at ${property.address}. Schedule?`;
     setNewMessage(message);
     setShowProperties(false);
   };
@@ -191,15 +208,18 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
 
           {/* AI Toggle */}
           <button
-            onClick={() => setAiEnabled(!aiEnabled)}
+            onClick={() => {
+              setAiEnabled(!aiEnabled);
+              console.log('🔘 AI Toggled:', !aiEnabled ? 'ON' : 'OFF');
+            }}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium transition mr-3 ${
               aiEnabled
                 ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                : 'bg-red-100 text-red-700 hover:bg-red-200'
             }`}
           >
             {aiEnabled ? <Zap size={16} /> : <ZapOff size={16} />}
-            <span className="text-xs">{aiEnabled ? 'AI ON' : 'AI OFF'}</span>
+            <span className="text-xs font-bold">{aiEnabled ? 'AI ON' : 'AI OFF'}</span>
           </button>
 
           <button
@@ -217,19 +237,17 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
 
         {/* Main Content */}
         <div className="flex-1 overflow-hidden flex gap-4 p-4">
-          {/* Left Panel - Details */}
+          {/* Left Panel */}
           <div className="w-64 flex-shrink-0 flex flex-col gap-4 overflow-y-auto">
-            {/* Lead Details Card */}
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
               <h3 className="font-semibold text-gray-900 mb-3">Lead Details</h3>
 
-              {/* Stage Selector */}
               <div className="mb-4">
-                <label className="text-xs font-medium text-gray-700 block mb-1">Current Stage</label>
+                <label className="text-xs font-medium text-gray-700 block mb-1">Stage</label>
                 <select
                   value={stage}
                   onChange={(e) => handleStageChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-medium"
                 >
                   {stages.map((s) => (
                     <option key={s} value={s}>
@@ -239,38 +257,34 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
                 </select>
               </div>
 
-              {/* Score Badge */}
               <div className="mb-3">
                 <p className="text-xs font-medium text-gray-700 mb-1">Lead Score</p>
                 <span
-                  className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                    lead.lead_score === 'Hot'
+                  className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
+                    leadScore === 'Hot'
                       ? 'bg-red-100 text-red-800'
-                      : lead.lead_score === 'Warm'
+                      : leadScore === 'Warm'
                       ? 'bg-yellow-100 text-yellow-800'
                       : 'bg-blue-100 text-blue-800'
                   }`}
                 >
-                  {lead.lead_score || 'Unknown'}
+                  {leadScore || 'Unknown'}
                 </span>
               </div>
 
-              {/* Info Fields */}
               <div className="space-y-3 text-sm">
                 <div>
-                  <p className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                    <MapPin size={14} /> Area
-                  </p>
+                  <p className="text-xs font-medium text-gray-700">📍 Area</p>
                   <p className="text-gray-900 font-medium mt-0.5">{lead.preferred_area || 'Not specified'}</p>
                 </div>
 
                 <div>
-                  <p className="text-xs font-medium text-gray-700">Budget</p>
+                  <p className="text-xs font-medium text-gray-700">💰 Budget</p>
                   <p className="text-gray-900 font-medium mt-0.5">{lead.target_budget || 'Not specified'}</p>
                 </div>
 
                 <div>
-                  <p className="text-xs font-medium text-gray-700">Bedrooms</p>
+                  <p className="text-xs font-medium text-gray-700">🛏️ Bedrooms</p>
                   <p className="text-gray-900 font-medium mt-0.5">{lead.bedrooms || 'Not specified'}</p>
                 </div>
               </div>
@@ -279,14 +293,14 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
 
           {/* Right Panel - Chat */}
           <div className="flex-1 flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden">
-            {/* Messages Area */}
+            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
               {messages.length === 0 ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
                     <MessageCircle size={32} className="mx-auto text-gray-300 mb-2" />
-                    <p className="text-gray-500 text-sm">Start conversation with prospect</p>
-                    <p className="text-gray-400 text-xs mt-2">{aiEnabled ? 'AI-powered mode' : 'Manual mode'}</p>
+                    <p className="text-gray-500 text-sm">Start conversation</p>
+                    <p className="text-gray-400 text-xs mt-2">{aiEnabled ? '🤖 AI-powered mode' : '🚫 Manual mode'}</p>
                   </div>
                 </div>
               ) : (
@@ -321,22 +335,22 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
               )}
             </div>
 
-            {/* Input Area */}
+            {/* Input */}
             <div className="p-3 border-t border-gray-200 bg-white">
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && !aiLoading && handleSendMessage()}
-                  placeholder={aiEnabled ? 'Type message... (AI will respond)' : 'Type message... (Manual mode)'}
+                  onKeyPress={(e) => e.key === 'Enter' && !aiLoading && !loading && handleSendMessage()}
+                  placeholder={aiEnabled ? 'Type message... (AI enabled)' : 'Type message... (Manual mode)'}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={loading || aiLoading}
                 />
                 <button
                   onClick={handleSendMessage}
                   disabled={loading || aiLoading || !newMessage.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 transition"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 transition font-medium"
                 >
                   <Send size={16} />
                 </button>
@@ -345,7 +359,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
           </div>
         </div>
 
-        {/* Properties Panel */}
+        {/* Properties */}
         {showProperties && (
           <div className="border-t border-gray-200 bg-gray-50 p-4 max-h-48 overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
@@ -356,7 +370,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
             </div>
 
             {recommendedProperties.length === 0 ? (
-              <p className="text-gray-600 text-sm">No properties found matching criteria</p>
+              <p className="text-gray-600 text-sm">No properties match criteria</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {recommendedProperties.map((prop) => (
@@ -369,7 +383,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
                       <img src={prop.image_url_1} alt={prop.title} className="w-full h-20 rounded object-cover mb-2" />
                     )}
                     <p className="text-xs font-medium text-gray-900 truncate">{prop.title}</p>
-                    <p className="text-xs text-blue-600 font-bold">R {parseInt(prop.price).toLocaleString()}</p>
+                    <p className="text-xs text-blue-600 font-bold">R{parseInt(prop.price).toLocaleString()}</p>
                   </div>
                 ))}
               </div>
