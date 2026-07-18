@@ -16,7 +16,6 @@ export default function CSVUpload() {
       setLoading(true);
       setMessage(null);
 
-      // Parse CSV
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
@@ -28,39 +27,72 @@ export default function CSVUpload() {
               throw new Error('CSV is empty');
             }
 
-            // Validate and transform data
-            const properties = data.map((row) => {
-              const price = row.price?.replace(/[^\d]/g, '') || 0;
-              const bedrooms = parseFloat(row.bedrooms) || 0;
-              const bathrooms = parseFloat(row.bathroom) || 0;
-              const garage = parseFloat(row.garage) || 0;
+            console.log('Parsed CSV data:', data);
 
-              return {
-                property_url: row['image_url']?.[0] || '', // First image_url column
-                image_url: row['image_url']?.[1] || row.image_url || '', // Second image_url or fallback
-                price: parseInt(price),
-                title: row.title || '',
-                location: row.location || '',
-                address: row.address || '',
-                description: row.description || '',
-                bedrooms,
-                bathrooms,
-                garage: isNaN(garage) ? row.garage : garage, // Handle "72 m²" format
-                created_at: new Date().toISOString(),
-              };
-            });
+            // Validate and transform data to match Supabase schema
+            const properties = data
+              .map((row) => {
+                try {
+                  // Extract price - remove all non-digits
+                  const priceStr = row.price?.replace(/[^\d]/g, '') || '0';
+                  const price = parseInt(priceStr) || 0;
 
-            // Upload to Supabase
-            const { error } = await supabase
+                  // Parse bedrooms, bathrooms, garage
+                  const bedrooms = parseFloat(row.bedrooms) || 0;
+                  const bathrooms = parseFloat(row.bathroom) || 0;
+                  
+                  // Handle garage field (can be "72 m²" or just a number)
+                  let garage = 0;
+                  if (row.garage) {
+                    const garageNum = parseFloat(row.garage);
+                    garage = isNaN(garageNum) ? 0 : garageNum;
+                  }
+
+                  return {
+                    property_url: row['image_url']?.[0] || '', // First URL column - property link
+                    image_url: row['image_url']?.[1] || row.image_url || '', // Second URL column - image
+                    price,
+                    title: row.title?.trim() || '',
+                    location: row.location?.trim() || '',
+                    address: row.address?.trim() || '',
+                    description: row.description?.trim() || '',
+                    bedrooms,
+                    bathrooms,
+                    garage,
+                    property_type: extractPropertyType(row.title),
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                  };
+                } catch (rowErr) {
+                  console.error('Error processing row:', row, rowErr);
+                  return null;
+                }
+              })
+              .filter(p => p !== null && p.title && p.address);
+
+            if (properties.length === 0) {
+              throw new Error('No valid properties found in CSV');
+            }
+
+            console.log('Transformed properties:', properties);
+
+            // Insert directly into Supabase
+            const { data: inserted, error } = await supabase
               .from('re_properties')
-              .insert(properties);
+              .insert(properties)
+              .select();
 
-            if (error) throw error;
+            if (error) {
+              console.error('Supabase insert error:', error);
+              throw new Error(error.message);
+            }
 
+            console.log('Successfully inserted:', inserted);
             setMessageType('success');
-            setMessage(`✅ Successfully uploaded ${properties.length} properties!`);
-            e.target.value = ''; // Reset input
+            setMessage(`✅ Successfully uploaded ${inserted.length} properties!`);
+            e.target.value = '';
           } catch (err) {
+            console.error('Processing error:', err);
             setMessageType('error');
             setMessage(`❌ Error: ${err.message}`);
           } finally {
@@ -68,16 +100,28 @@ export default function CSVUpload() {
           }
         },
         error: (err) => {
+          console.error('Parse error:', err);
           setMessageType('error');
           setMessage(`❌ CSV Parse Error: ${err.message}`);
           setLoading(false);
         }
       });
     } catch (err) {
+      console.error('Upload error:', err);
       setMessageType('error');
       setMessage(`❌ Error: ${err.message}`);
       setLoading(false);
     }
+  };
+
+  const extractPropertyType = (title) => {
+    if (!title) return 'House';
+    const lower = title.toLowerCase();
+    if (lower.includes('apartment')) return 'Apartment';
+    if (lower.includes('townhouse')) return 'Townhouse';
+    if (lower.includes('villa')) return 'Villa';
+    if (lower.includes('plot')) return 'Plot';
+    return 'House';
   };
 
   return (
@@ -131,8 +175,8 @@ export default function CSVUpload() {
         <div className="mt-6 text-left bg-gray-50 p-4 rounded-lg">
           <p className="text-xs font-semibold text-gray-900 mb-2">CSV Format Required:</p>
           <ul className="text-xs text-gray-600 space-y-1">
-            <li>• image_url (property link)</li>
-            <li>• image_url (image link)</li>
+            <li>• Column 1: image_url (property link)</li>
+            <li>• Column 2: image_url (image link)</li>
             <li>• price, title, location, address</li>
             <li>• description, bedrooms, bathroom, garage</li>
           </ul>
