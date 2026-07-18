@@ -1,10 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from './supabase';
 
 export function useSupabaseRealtime(table, filter = null) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [subscriptionKey, setSubscriptionKey] = useState(0);
+
+  const refetch = useCallback(async () => {
+    try {
+      setLoading(true);
+      let query = supabase.from(table).select('*');
+      
+      if (filter) {
+        Object.keys(filter).forEach(key => {
+          query = query.eq(key, filter[key]);
+        });
+      }
+
+      const { data: freshData, error: fetchError } = await query;
+      
+      if (fetchError) throw fetchError;
+      setData(freshData || []);
+      setLoading(false);
+    } catch (err) {
+      console.error('Refetch error:', err);
+      setError(err.message);
+      setLoading(false);
+    }
+  }, [table, filter]);
 
   useEffect(() => {
     let subscription;
@@ -28,7 +52,7 @@ export function useSupabaseRealtime(table, filter = null) {
 
         // Setup realtime listener
         subscription = supabase
-          .channel(`public:${table}`)
+          .channel(`public:${table}:${subscriptionKey}`)
           .on(
             'postgres_changes',
             {
@@ -37,6 +61,7 @@ export function useSupabaseRealtime(table, filter = null) {
               table: table,
             },
             (payload) => {
+              console.log('Realtime update:', payload);
               setData(current => {
                 const updated = [...current];
                 
@@ -70,7 +95,7 @@ export function useSupabaseRealtime(table, filter = null) {
         supabase.removeChannel(subscription);
       }
     };
-  }, [table, filter]);
+  }, [table, filter, subscriptionKey]);
 
-  return { data, loading, error };
+  return { data, loading, error, refetch };
 }
