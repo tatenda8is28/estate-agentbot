@@ -14,114 +14,185 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const BOT_START_TIME = new Date();
-const NEWSLETTER_KEYWORDS = ['newsletter', 'subscribe', 'unsubscribe', 'promotion', 'deal', 'offer', 'click here', 'limited time', 'don\'t miss'];
-const IRRELEVANT_PATTERNS = /^(ok|thanks|no|yes|👍|😊|lol|haha|good|bye|hello|hi)$/i;
 
-// ============ AI RESPONSE ENDPOINT ============
+// ============ UNIFIED AI FUNCTION - USED BY BOTH WHATSAPP & API ============
+async function generateAIResponse(userText, conversationHistory, prospect) {
+  try {
+    console.log('\n🤖 === AI PROCESSING START ===');
+    console.log('📝 User:', userText);
+    console.log('👤 Prospect:', prospect.prospect_name, '| Area:', prospect.preferred_area, '| Budget:', prospect.target_budget);
+
+    // STEP 1: FETCH PROPERTIES FROM DATABASE
+    let propertiesQuery = supabase.from('re_properties').select('id, title, location, address, price, bedrooms, bathroom, description, image_url_1');
+
+    if (prospect?.preferred_area) {
+      propertiesQuery = propertiesQuery.ilike('location', `%${prospect.preferred_area}%`);
+    }
+
+    if (prospect?.target_budget) {
+      const budgetStr = prospect.target_budget.toString().replace(/[^\d]/g, '');
+      const budget = parseInt(budgetStr) || 0;
+      if (budget > 0) {
+        propertiesQuery = propertiesQuery.lte('price', budget.toString());
+      }
+    }
+
+    const { data: properties, error: propError } = await propertiesQuery.order('price', { ascending: true }).limit(6);
+
+    if (propError) {
+      console.error('❌ Property fetch error:', propError.message);
+    } else {
+      console.log(`✅ Found ${properties?.length || 0} matching properties`);
+      if (properties && properties.length > 0) {
+        properties.forEach(p => {
+          console.log(`   • ${p.title} - ${p.location} - R${parseInt(p.price).toLocaleString()}`);
+        });
+      }
+    }
+
+    // STEP 2: BUILD PROPERTY CONTEXT FOR AI
+    let propertyContext = '';
+    if (properties && properties.length > 0) {
+      propertyContext = `\n\nMATCHING PROPERTIES FROM DATABASE:\n`;
+      properties.forEach((p, i) => {
+        propertyContext += `\n${i + 1}. "${p.title}"
+   Location: ${p.location}
+   Address: ${p.address}
+   Price: R${parseInt(p.price).toLocaleString()}
+   Details: ${p.bedrooms}bed, ${p.bathroom}bath
+   Description: ${p.description?.substring(0, 100) || 'Modern property'}`;
+      });
+    } else {
+      propertyContext = '\n\nNo matching properties in database yet. Acknowledge this.';
+    }
+
+    // STEP 3: CALL OPENAI WITH PROPERTIES IN CONTEXT
+    const systemPrompt = `You are a professional real estate agent for South Africa properties.
+
+PROSPECT:
+- Name: ${prospect.prospect_name || 'Client'}
+- Budget: R${prospect.target_budget || 'Not specified'}
+- Area: ${prospect.preferred_area || 'Not specified'}
+- Bedrooms: ${prospect.bedrooms || 'Not specified'}
+- Current Stage: ${prospect.lead_stage || 'Discovery'}
+${propertyContext}
+
+INSTRUCTIONS:
+1. ALWAYS reference specific property names and prices from the database above
+2. Be warm, professional, and persuasive
+3. Build urgency for viewings
+4. Ask qualifying questions if needed
+5. Keep response to 2-3 sentences max
+6. Use property titles exactly as listed
+
+RESPOND NATURALLY - DO NOT mention you're showing database results.`;
+
+    console.log('📤 Calling OpenAI...');
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...conversationHistory.slice(-5).map(msg => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+        { role: 'user', content: userText },
+      ],
+      temperature: 0.8,
+      max_tokens: 300,
+    });
+
+    const aiReply = response.choices?.[0]?.message?.content || 'How can I help?';
+    console.log('✅ AI Reply:', aiReply.substring(0, 100) + '...');
+
+    // STEP 4: EXTRACT LEAD INTELLIGENCE
+    let leadScore = prospect.lead_score || 'Cool';
+    let newLeadStage = prospect.lead_stage || 'Discovery';
+
+    const lowerReply = aiReply.toLowerCase();
+    const lowerUser = userText.toLowerCase();
+
+    // Score based on intent
+    if (
+      lowerUser.includes('show') || 
+      lowerUser.includes('see') || 
+      lowerUser.includes('interested') ||
+      lowerUser.includes('viewing') ||
+      lowerUser.includes('schedule') ||
+      lowerUser.includes('book') ||
+      lowerReply.includes('book') ||
+      lowerReply.includes('viewing') ||
+      lowerReply.includes('schedule')
+    ) {
+      leadScore = 'Hot';
+      newLeadStage = 'Interested';
+    } else if (
+      lowerUser.includes('looking') ||
+      lowerUser.includes('interested') ||
+      lowerUser.includes('find') ||
+      lowerUser.includes('property') ||
+      lowerUser.includes('house') ||
+      lowerUser.includes('apartment')
+    ) {
+      leadScore = 'Warm';
+      if (prospect.lead_stage === 'Discovery') {
+        newLeadStage = 'Interested';
+      }
+    }
+
+    console.log(`📊 Score: ${leadScore} | Stage: ${prospect.lead_stage} → ${newLeadStage}`);
+
+    return {
+      reply: aiReply,
+      extracted_data: {
+        score: leadScore,
+        newStage: newLeadStage,
+      },
+    };
+  } catch (error) {
+    console.error('❌ AI Generation Error:', error.message);
+    throw error;
+  }
+}
+
+// ============ API ENDPOINT ============
 app.post('/api/ai-response', async (req, res) => {
   try {
     const { userMessage, conversationHistory, prospectId } = req.body;
 
-    console.log('🤖 AI Request - Prospect:', prospectId);
-
-    // Fetch prospect details
+    // Get prospect
     const { data: prospect, error: prospectError } = await supabase
       .from('re_prospect_leads')
       .select('*')
       .eq('id', prospectId)
       .single();
 
-    if (prospectError) {
-      console.error('Error fetching prospect:', prospectError);
+    if (prospectError || !prospect) {
       return res.status(400).json({ error: 'Prospect not found' });
     }
 
-    console.log('📍 Prospect Area:', prospect?.preferred_area, 'Budget:', prospect?.target_budget);
+    // Generate AI response
+    const result = await generateAIResponse(userMessage, conversationHistory, prospect);
 
-    // Fetch matching properties - PROPERLY BUILD QUERY
-    let propertiesQuery = supabase.from('re_properties').select('*');
+    // Update prospect if score/stage changed
+    if (result.extracted_data.score !== prospect.lead_score || result.extracted_data.newStage !== prospect.lead_stage) {
+      const updates = {
+        lead_score: result.extracted_data.score,
+        lead_stage: result.extracted_data.newStage,
+      };
 
-    // Apply filters
-    if (prospect?.preferred_area) {
-      propertiesQuery = propertiesQuery.ilike('location', `%${prospect.preferred_area}%`);
+      console.log('🔄 Updating prospect:', updates);
+
+      await supabase
+        .from('re_prospect_leads')
+        .update(updates)
+        .eq('id', prospect.id);
     }
 
-    if (prospect?.target_budget) {
-      const budget = parseInt(prospect.target_budget.toString().replace(/[^\d]/g, '')) || 0;
-      if (budget > 0) {
-        propertiesQuery = propertiesQuery.lte('price', budget.toString());
-      }
-    }
-
-    // Execute query with order and limit
-    const { data: properties, error: propertiesError } = await propertiesQuery
-      .order('price', { ascending: true })
-      .limit(5);
-
-    if (propertiesError) {
-      console.error('Error fetching properties:', propertiesError);
-    }
-
-    console.log('🏠 Found properties:', properties?.length || 0);
-
-    // Build property context
-    let propertyContext = '';
-    if (properties && properties.length > 0) {
-      propertyContext = `\n\n🏠 AVAILABLE PROPERTIES:\n${properties
-        .map(
-          (p) =>
-            `• **${p.title}** in ${p.location}\n   📍 ${p.address}\n   💰 R${parseInt(p.price).toLocaleString()}\n   🛏️ ${p.bedrooms}bd ${p.bathroom}ba\n   📝 ${p.description?.substring(0, 60) || 'Modern property'}...`
-        )
-        .join('\n\n')}`;
-    } else {
-      propertyContext = '\n\n❌ No matching properties in database yet.';
-    }
-
-    const systemPrompt = `You are an ELITE REAL ESTATE MASTER SELLER for South Africa.
-
-PROSPECT PROFILE:
-- Name: ${prospect?.prospect_name || 'Valued Client'}
-- Budget: R${prospect?.target_budget || 'Flexible'}
-- Area: ${prospect?.preferred_area || 'Open to options'}
-- Bedrooms: ${prospect?.bedrooms || 'Not specified'}
-- Stage: ${prospect?.lead_stage || 'Discovery'}
-
-${propertyContext}
-
-YOUR MISSION:
-1. REFERENCE specific properties by name and price
-2. Highlight how each property matches their needs
-3. Build urgency and excitement
-4. Ask qualifying questions
-5. Move toward scheduling viewings
-6. Keep responses 2-3 sentences, warm and professional
-7. Use local SA property terms (sectional title, garden, pool, etc)
-
-CRITICAL: Always mention specific property names and prices when recommending.`;
-
-    console.log('📤 Calling OpenAI with property context...');
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...conversationHistory.slice(-5).map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-        { role: 'user', content: userMessage },
-      ],
-      temperature: 0.8,
-      max_tokens: 300,
-    });
-
-    const aiResponse = response.choices?.[0]?.message?.content || 'How can I assist you further?';
-
-    console.log('✅ AI Response:', aiResponse.substring(0, 80) + '...');
-
-    res.json({ reply: aiResponse });
+    res.json({ reply: result.reply });
   } catch (error) {
-    console.error('❌ AI Response Error:', error.message);
+    console.error('API Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -141,66 +212,16 @@ function isRelevantMessage(msg) {
     if (!msg.caption || msg.caption.trim().length === 0) return false;
   }
   const lowerText = msg.body.toLowerCase();
-  if (NEWSLETTER_KEYWORDS.some((keyword) => lowerText.includes(keyword))) return false;
-  if (IRRELEVANT_PATTERNS.test(msg.body)) return false;
+  const irrelevantPatterns = /^(ok|thanks|no|yes|👍|😊|lol|haha|good|bye|hello|hi)$/i;
+  if (irrelevantPatterns.test(msg.body)) return false;
   const msgTime = msg.timestamp * 1000;
   if (msgTime < BOT_START_TIME.getTime()) return false;
-  if (msg.body.length > 500 && msg.body.split(msg.body.charAt(0)).length > 20) return false;
-  if (msg.body.startsWith('http') && !msg.body.includes('property') && !msg.body.includes('house') && !msg.body.includes('apartment')) return false;
   return true;
-}
-
-async function getAIIntelligence(text, history, prospect) {
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `You are Elite Real Estate Assistant extracting lead intelligence.
-                    
-Current Lead: Name: ${prospect.prospect_name || 'Unknown'}, Budget: ${prospect.target_budget || 'Not specified'}, Area: ${prospect.preferred_area || 'Not specified'}.
-
-Extract and respond with ONLY valid JSON:
-{
-  "reply": "Your response here - warm, professional, 2-3 sentences",
-  "extracted_data": {
-    "name": "name if mentioned",
-    "budget": "budget if mentioned",
-    "location": "area if mentioned",
-    "score": "Hot|Warm|Cool based on intent"
-  }
-}
-
-Rules:
-- Score "Hot" if asking to buy/view immediately
-- Score "Warm" if interested but asking questions
-- Score "Cool" if just browsing
-- Never ask for info you already have
-- Keep reply natural and warm`,
-        },
-        ...history.slice(-4),
-        { role: 'user', content: text },
-      ],
-      response_format: { type: 'json_object' },
-    });
-
-    const parsed = JSON.parse(response.choices[0].message.content);
-    console.log('📊 Extracted Score:', parsed.extracted_data?.score);
-    return parsed;
-  } catch (e) {
-    console.error('AI Intelligence Error:', e.message);
-    return {
-      reply: "I'm analyzing property options for you. 🏠",
-      extracted_data: { score: 'Warm' },
-    };
-  }
 }
 
 client.on('qr', (qr) => qrcode.generate(qr, { small: true }));
 client.on('ready', () => {
   console.log('🚀 ESTATE BOT: Online');
-  console.log(`📅 Started: ${BOT_START_TIME.toLocaleString()}`);
 });
 
 client.on('message', async (msg) => {
@@ -209,27 +230,39 @@ client.on('message', async (msg) => {
   const waNumber = msg.from;
   const text = msg.body;
 
-  console.log(`\n📨 Message from ${waNumber}: "${text.substring(0, 60)}..."`);
+  console.log(`\n📱 WhatsApp from ${waNumber}: "${text.substring(0, 60)}..."`);
 
   try {
     // Get or create prospect
-    let { data: prospect } = await supabase.from('re_prospect_leads').select('*').eq('wa_number', waNumber).single();
+    let { data: prospect } = await supabase
+      .from('re_prospect_leads')
+      .select('*')
+      .eq('wa_number', waNumber)
+      .single();
+
     if (!prospect) {
-      console.log('✨ New prospect created');
-      const { data: newP } = await supabase.from('re_prospect_leads').insert([{ wa_number: waNumber }]).select().single();
+      console.log('✨ New prospect');
+      const { data: newP } = await supabase
+        .from('re_prospect_leads')
+        .insert([{ wa_number: waNumber }])
+        .select()
+        .single();
       prospect = newP;
     }
 
-    // Get conversation history
-    let { data: log } = await supabase.from('re_interaction_logs').select('*').eq('prospect_id', prospect.id).single();
+    // Get conversation
+    let { data: log } = await supabase
+      .from('re_interaction_logs')
+      .select('*')
+      .eq('prospect_id', prospect.id)
+      .single();
 
     let convo = [];
     if (log?.conversation) {
       try {
-        const parsed = JSON.parse(log.conversation);
-        convo = Array.isArray(parsed) ? parsed : [];
+        convo = JSON.parse(log.conversation);
+        if (!Array.isArray(convo)) convo = [];
       } catch (e) {
-        console.error('Parse error:', e);
         convo = [];
       }
     }
@@ -237,62 +270,41 @@ client.on('message', async (msg) => {
     // Add user message
     convo.push({ role: 'user', content: text, t: new Date().toISOString() });
 
-    // Get AI response with intelligence extraction
-    const ai = await getAIIntelligence(text, convo, prospect);
-    convo.push({ role: 'assistant', content: ai.reply, t: new Date().toISOString() });
+    // Generate AI response using UNIFIED function
+    const aiResult = await generateAIResponse(text, convo, prospect);
+    convo.push({ role: 'assistant', content: aiResult.reply, t: new Date().toISOString() });
 
     // Save conversation
-    const { error: saveError } = await supabase.from('re_interaction_logs').upsert({
+    await supabase.from('re_interaction_logs').upsert({
       prospect_id: prospect.id,
       conversation: JSON.stringify(convo),
       last_updated_at: new Date().toISOString(),
     });
 
-    if (saveError) console.error('Save error:', saveError);
-
     // Update prospect with extracted data
-    if (ai.extracted_data) {
-      const updates = {};
-      if (ai.extracted_data.name) updates.prospect_name = ai.extracted_data.name;
-      if (ai.extracted_data.budget) updates.target_budget = ai.extracted_data.budget;
-      if (ai.extracted_data.location) updates.preferred_area = ai.extracted_data.location;
-      if (ai.extracted_data.score) {
-        updates.lead_score = ai.extracted_data.score;
-        // Auto-move to Interested if Hot or Warm
-        if (ai.extracted_data.score === 'Hot') {
-          updates.lead_stage = 'Interested';
-          console.log('🔥 Lead upgraded to HOT - Moving to Interested');
-        } else if (ai.extracted_data.score === 'Warm' && prospect.lead_stage === 'Discovery') {
-          updates.lead_stage = 'Interested';
-          console.log('🌡️ Lead is WARM - Moving to Interested');
-        }
-      }
+    const updates = {
+      lead_score: aiResult.extracted_data.score,
+      lead_stage: aiResult.extracted_data.newStage,
+    };
 
-      if (Object.keys(updates).length > 0) {
-        const { error: updateError } = await supabase
-          .from('re_prospect_leads')
-          .update(updates)
-          .eq('id', prospect.id);
+    await supabase
+      .from('re_prospect_leads')
+      .update(updates)
+      .eq('id', prospect.id);
 
-        if (updateError) {
-          console.error('Update error:', updateError);
-        } else {
-          console.log('✅ Prospect updated:', updates);
-        }
-      }
-    }
+    console.log('✅ Prospect updated:', updates);
 
-    msg.reply(ai.reply);
-    console.log('✅ Reply sent\n');
+    // Send WhatsApp reply
+    msg.reply(aiResult.reply);
+    console.log('✅ WhatsApp reply sent\n');
   } catch (err) {
     console.error('❌ Error:', err.message);
-    msg.reply('I apologize, I encountered an issue. Please try again.');
   }
 });
 
 client.initialize();
 
-// Start API server
+// Start server
 const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`\n✅ API Server: http://localhost:${PORT}\n`);
