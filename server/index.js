@@ -15,15 +15,17 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const BOT_START_TIME = new Date();
 
-// ============ UNIFIED AI FUNCTION - USED BY BOTH WHATSAPP & API ============
+// ============ UNIFIED AI FUNCTION ============
 async function generateAIResponse(userText, conversationHistory, prospect) {
   try {
     console.log('\n🤖 === AI PROCESSING START ===');
     console.log('📝 User:', userText);
     console.log('👤 Prospect:', prospect.prospect_name, '| Area:', prospect.preferred_area, '| Budget:', prospect.target_budget);
 
-    // STEP 1: FETCH PROPERTIES FROM DATABASE
-    let propertiesQuery = supabase.from('re_properties').select('id, title, location, address, price, bedrooms, bathroom, description, image_url_1');
+    // FETCH PROPERTIES - CORRECT COLUMN NAMES
+    let propertiesQuery = supabase
+      .from('re_properties')
+      .select('id, title, location, text, price, image_url1');
 
     if (prospect?.preferred_area) {
       propertiesQuery = propertiesQuery.ilike('location', `%${prospect.preferred_area}%`);
@@ -37,55 +39,55 @@ async function generateAIResponse(userText, conversationHistory, prospect) {
       }
     }
 
-    const { data: properties, error: propError } = await propertiesQuery.order('price', { ascending: true }).limit(6);
+    const { data: properties, error: propError } = await propertiesQuery
+      .order('price', { ascending: true })
+      .limit(6);
 
     if (propError) {
       console.error('❌ Property fetch error:', propError.message);
     } else {
-      console.log(`✅ Found ${properties?.length || 0} matching properties`);
+      console.log(`✅ Found ${properties?.length || 0} matching properties from DATABASE`);
       if (properties && properties.length > 0) {
         properties.forEach(p => {
-          console.log(`   • ${p.title} - ${p.location} - R${parseInt(p.price).toLocaleString()}`);
+          const priceNum = parseInt(p.price) || 0;
+          console.log(`   • "${p.title}" in ${p.location} - R${priceNum.toLocaleString()}`);
         });
       }
     }
 
-    // STEP 2: BUILD PROPERTY CONTEXT FOR AI
+    // BUILD PROPERTY CONTEXT
     let propertyContext = '';
     if (properties && properties.length > 0) {
-      propertyContext = `\n\nMATCHING PROPERTIES FROM DATABASE:\n`;
+      propertyContext = `\n\n📍 MATCHING PROPERTIES FROM DATABASE:\n`;
       properties.forEach((p, i) => {
+        const priceNum = parseInt(p.price) || 0;
         propertyContext += `\n${i + 1}. "${p.title}"
    Location: ${p.location}
-   Address: ${p.address}
-   Price: R${parseInt(p.price).toLocaleString()}
-   Details: ${p.bedrooms}bed, ${p.bathroom}bath
-   Description: ${p.description?.substring(0, 100) || 'Modern property'}`;
+   Price: R${priceNum.toLocaleString()}
+   URL: ${p.text || 'Property link'}`;
       });
     } else {
-      propertyContext = '\n\nNo matching properties in database yet. Acknowledge this.';
+      propertyContext = '\n\n⚠️ No matching properties found in database for this criteria.';
     }
 
-    // STEP 3: CALL OPENAI WITH PROPERTIES IN CONTEXT
-    const systemPrompt = `You are a professional real estate agent for South Africa properties.
+    const systemPrompt = `You are a professional South African real estate agent.
 
-PROSPECT:
+PROSPECT PROFILE:
 - Name: ${prospect.prospect_name || 'Client'}
 - Budget: R${prospect.target_budget || 'Not specified'}
 - Area: ${prospect.preferred_area || 'Not specified'}
-- Bedrooms: ${prospect.bedrooms || 'Not specified'}
-- Current Stage: ${prospect.lead_stage || 'Discovery'}
+- Stage: ${prospect.lead_stage || 'Discovery'}
+
 ${propertyContext}
 
-INSTRUCTIONS:
-1. ALWAYS reference specific property names and prices from the database above
-2. Be warm, professional, and persuasive
-3. Build urgency for viewings
-4. Ask qualifying questions if needed
-5. Keep response to 2-3 sentences max
-6. Use property titles exactly as listed
-
-RESPOND NATURALLY - DO NOT mention you're showing database results.`;
+CRITICAL RULES:
+1. REFERENCE EXACT PROPERTY NAMES AND PRICES from the list above
+2. If properties found: "I found 'Property Title' in ${prospect.preferred_area} for R[price]"
+3. If no properties: "We don't currently have properties matching that, but let me help find options"
+4. Be warm, professional, persuasive
+5. Build urgency for viewings
+6. Max 3 sentences
+7. DO NOT mention "database" or "list" - speak naturally`;
 
     console.log('📤 Calling OpenAI...');
 
@@ -104,24 +106,21 @@ RESPOND NATURALLY - DO NOT mention you're showing database results.`;
     });
 
     const aiReply = response.choices?.[0]?.message?.content || 'How can I help?';
-    console.log('✅ AI Reply:', aiReply.substring(0, 100) + '...');
+    console.log('✅ AI Reply:', aiReply.substring(0, 120) + '...');
 
-    // STEP 4: EXTRACT LEAD INTELLIGENCE
+    // SCORE DETECTION
     let leadScore = prospect.lead_score || 'Cool';
     let newLeadStage = prospect.lead_stage || 'Discovery';
 
-    const lowerReply = aiReply.toLowerCase();
     const lowerUser = userText.toLowerCase();
+    const lowerReply = aiReply.toLowerCase();
 
-    // Score based on intent
     if (
       lowerUser.includes('show') || 
       lowerUser.includes('see') || 
-      lowerUser.includes('interested') ||
       lowerUser.includes('viewing') ||
-      lowerUser.includes('schedule') ||
       lowerUser.includes('book') ||
-      lowerReply.includes('book') ||
+      lowerUser.includes('schedule') ||
       lowerReply.includes('viewing') ||
       lowerReply.includes('schedule')
     ) {
@@ -131,9 +130,10 @@ RESPOND NATURALLY - DO NOT mention you're showing database results.`;
       lowerUser.includes('looking') ||
       lowerUser.includes('interested') ||
       lowerUser.includes('find') ||
-      lowerUser.includes('property') ||
+      lowerUser.includes('apartment') ||
       lowerUser.includes('house') ||
-      lowerUser.includes('apartment')
+      lowerUser.includes('property') ||
+      properties?.length > 0
     ) {
       leadScore = 'Warm';
       if (prospect.lead_stage === 'Discovery') {
@@ -151,7 +151,7 @@ RESPOND NATURALLY - DO NOT mention you're showing database results.`;
       },
     };
   } catch (error) {
-    console.error('❌ AI Generation Error:', error.message);
+    console.error('❌ AI Error:', error.message);
     throw error;
   }
 }
@@ -161,7 +161,6 @@ app.post('/api/ai-response', async (req, res) => {
   try {
     const { userMessage, conversationHistory, prospectId } = req.body;
 
-    // Get prospect
     const { data: prospect, error: prospectError } = await supabase
       .from('re_prospect_leads')
       .select('*')
@@ -172,10 +171,9 @@ app.post('/api/ai-response', async (req, res) => {
       return res.status(400).json({ error: 'Prospect not found' });
     }
 
-    // Generate AI response
     const result = await generateAIResponse(userMessage, conversationHistory, prospect);
 
-    // Update prospect if score/stage changed
+    // Update prospect
     if (result.extracted_data.score !== prospect.lead_score || result.extracted_data.newStage !== prospect.lead_stage) {
       const updates = {
         lead_score: result.extracted_data.score,
@@ -211,9 +209,6 @@ function isRelevantMessage(msg) {
   if (msg.type === 'image' || msg.type === 'video' || msg.type === 'document' || msg.type === 'audio') {
     if (!msg.caption || msg.caption.trim().length === 0) return false;
   }
-  const lowerText = msg.body.toLowerCase();
-  const irrelevantPatterns = /^(ok|thanks|no|yes|👍|😊|lol|haha|good|bye|hello|hi)$/i;
-  if (irrelevantPatterns.test(msg.body)) return false;
   const msgTime = msg.timestamp * 1000;
   if (msgTime < BOT_START_TIME.getTime()) return false;
   return true;
@@ -233,7 +228,6 @@ client.on('message', async (msg) => {
   console.log(`\n📱 WhatsApp from ${waNumber}: "${text.substring(0, 60)}..."`);
 
   try {
-    // Get or create prospect
     let { data: prospect } = await supabase
       .from('re_prospect_leads')
       .select('*')
@@ -241,7 +235,7 @@ client.on('message', async (msg) => {
       .single();
 
     if (!prospect) {
-      console.log('✨ New prospect');
+      console.log('✨ New prospect created');
       const { data: newP } = await supabase
         .from('re_prospect_leads')
         .insert([{ wa_number: waNumber }])
@@ -250,7 +244,6 @@ client.on('message', async (msg) => {
       prospect = newP;
     }
 
-    // Get conversation
     let { data: log } = await supabase
       .from('re_interaction_logs')
       .select('*')
@@ -267,21 +260,17 @@ client.on('message', async (msg) => {
       }
     }
 
-    // Add user message
     convo.push({ role: 'user', content: text, t: new Date().toISOString() });
 
-    // Generate AI response using UNIFIED function
     const aiResult = await generateAIResponse(text, convo, prospect);
     convo.push({ role: 'assistant', content: aiResult.reply, t: new Date().toISOString() });
 
-    // Save conversation
     await supabase.from('re_interaction_logs').upsert({
       prospect_id: prospect.id,
       conversation: JSON.stringify(convo),
       last_updated_at: new Date().toISOString(),
     });
 
-    // Update prospect with extracted data
     const updates = {
       lead_score: aiResult.extracted_data.score,
       lead_stage: aiResult.extracted_data.newStage,
@@ -294,9 +283,8 @@ client.on('message', async (msg) => {
 
     console.log('✅ Prospect updated:', updates);
 
-    // Send WhatsApp reply
     msg.reply(aiResult.reply);
-    console.log('✅ WhatsApp reply sent\n');
+    console.log('✅ Reply sent\n');
   } catch (err) {
     console.error('❌ Error:', err.message);
   }
@@ -304,8 +292,7 @@ client.on('message', async (msg) => {
 
 client.initialize();
 
-// Start server
 const PORT = 3001;
 app.listen(PORT, () => {
-  console.log(`\n✅ API Server: http://localhost:${PORT}\n`);
+  console.log(`\n✅ Server: http://localhost:${PORT}\n`);
 });
