@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Send, MapPin, TrendingUp, MessageCircle, Home, ChevronDown } from 'lucide-react';
+import { X, Send, MapPin, TrendingUp, MessageCircle, Home, ChevronDown, Zap, ZapOff } from 'lucide-react';
 import { supabase } from '../supabase';
 
 export default function LeadModal({ lead, onClose, onUpdate }) {
@@ -7,6 +7,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(true);
   const [stage, setStage] = useState(lead?.lead_stage || 'Discovery');
   const [showProperties, setShowProperties] = useState(false);
   const [recommendedProperties, setRecommendedProperties] = useState([]);
@@ -117,8 +118,15 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
       const userInput = newMessage;
       setNewMessage('');
 
-      // Get AI response
-      const assistantContent = await getAIResponse(userInput);
+      let assistantContent = '';
+
+      if (aiEnabled) {
+        // Get AI response
+        assistantContent = await getAIResponse(userInput);
+      } else {
+        // Manual mode - just acknowledge
+        assistantContent = `[Manual Mode] Noted: "${userInput}" - Awaiting your manual response.`;
+      }
 
       const assistantMsg = {
         t: new Date().toISOString(),
@@ -180,6 +188,19 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
             <h2 className="text-xl font-bold text-gray-900">{lead.prospect_name || 'Prospect'}</h2>
             <p className="text-sm text-gray-600">{lead.wa_number}</p>
           </div>
+
+          {/* AI Toggle */}
+          <button
+            onClick={() => setAiEnabled(!aiEnabled)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-medium transition mr-3 ${
+              aiEnabled
+                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+            }`}
+          >
+            {aiEnabled ? <Zap size={16} /> : <ZapOff size={16} />}
+            <span className="text-xs">{aiEnabled ? 'AI ON' : 'AI OFF'}</span>
+          </button>
 
           <button
             onClick={() => setShowProperties(!showProperties)}
@@ -265,6 +286,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
                   <div className="text-center">
                     <MessageCircle size={32} className="mx-auto text-gray-300 mb-2" />
                     <p className="text-gray-500 text-sm">Start conversation with prospect</p>
+                    <p className="text-gray-400 text-xs mt-2">{aiEnabled ? 'AI-powered mode' : 'Manual mode'}</p>
                   </div>
                 </div>
               ) : (
@@ -307,7 +329,7 @@ export default function LeadModal({ lead, onClose, onUpdate }) {
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !aiLoading && handleSendMessage()}
-                  placeholder="Type message..."
+                  placeholder={aiEnabled ? 'Type message... (AI will respond)' : 'Type message... (Manual mode)'}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={loading || aiLoading}
                 />
